@@ -1,0 +1,101 @@
+#!/usr/local/bin/python2.7
+
+
+# reddit-stream-search
+
+# Chad Lieberman, 2018
+# chad.lieberman@gmail.com
+# A simple example of how to scan Reddit's comments for keywords using PRAW, 
+# send an e-mail when a comment is found, and add the results to a log file
+# (also my first Python script)
+
+
+
+import config
+import praw
+import time
+import smtplib
+import string
+
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from datetime import datetime
+
+
+# edit these phrases
+
+KEYWORDS=["this is cool", "this is funky", "this is awesome"]
+
+
+
+REDDIT_BASE="https://www.reddit.com"
+
+
+def main():
+
+    reddit = praw.Reddit('bot1')
+    subreddit = reddit.subreddit('all')
+
+    for comment in subreddit.stream.comments():
+        process_comment(comment)
+
+
+def process_comment(comment):
+
+    has_keyword = any(k.lower() in comment.body.lower() for k in KEYWORDS)
+
+    if has_keyword:
+
+        print "\nMATCHED COMMENT: " + comment.body
+	print REDDIT_BASE + comment.permalink + "\n"
+
+	deliver_comment(comment)
+	log_comment(comment)
+
+
+def deliver_comment(comment):
+
+    msg = None
+    msg_html = None
+
+    msg = MIMEMultipart('alternative')
+
+    msg['Subject'] = config.CONFIG['email_subject']
+    msg['From'] = config.CONFIG['email_from']
+    msg['To'] = config.CONFIG['email_to']
+
+
+    raw_msg = "\n<strong>Comment:</strong><br />" + comment.body + "\n<br /><br /><strong>Link:</strong><br /><A HREF=\"" + REDDIT_BASE + comment.permalink + "\">Permalink</A>"
+    msg_html = MIMEText(raw_msg, 'html')
+    msg.attach(msg_html)
+
+    # log in to email server
+
+    email_server = smtplib.SMTP(config.CONFIG['email_server'], config.CONFIG['email_server_port'])
+    email_server.ehlo()
+    email_server.starttls()
+    email_server.ehlo()
+    email_server.login(config.CONFIG['email_username'],config.CONFIG['email_password'])
+
+
+    # deliver email
+
+    email_server.sendmail(config.CONFIG['email_username'], config.CONFIG['email_to'], msg.as_string())
+    email_server.quit()
+
+
+def log_comment(comment):
+
+    fh = open("log.txt", "a")
+
+    cleaned_comment = comment.body.replace("\n"," ")
+
+    current_datestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    fh.write(current_datestamp + " | " + REDDIT_BASE + comment.permalink + " | " + cleaned_comment + "\n")
+
+    fh.close()
+
+
+if __name__ == '__main__':
+    main()
